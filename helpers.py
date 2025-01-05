@@ -95,6 +95,22 @@ def get_beta_prior(g2,time):
         
     return betaPrior
 
+def get_beta_prior_single(g2,time):
+
+    """ 
+    Requires -  
+                g2 matrix n
+                Time vector of length n
+
+    Returns the intercept estimate 
+    """
+
+
+    npFit     = np.polyfit( time[time < 5*1e-6],np.log(g2[time < 5*1e-6] - 1), 2 )
+    betaPrior = np.exp(npFit[-1])
+        
+    return betaPrior
+
 def tikhonov_Phillips_reg(kernel,alpha,data,W):
 
     """
@@ -217,6 +233,65 @@ def get_contributios_prior(g1_autocorrelation,time,s_space,betaPrior,alpha,weigh
 
     return contributions, residuals, penaltyNorms
 
+def get_contributios_prior_single(g1_autocorrelation,time,s_space,betaPrior,alpha,weights=None):
+
+    """
+        Input -
+                
+            g1 autocorrelation matrix n-points
+            time vector of length n
+            s_space to create the kernel for the Thinkohonov regularization function
+            betaPrior vector of length 1
+
+        Returns -
+            
+            The estimated contribution of each decay rate (length defined by the s_space vector)
+
+    """
+
+    alphaList = alpha
+
+    s      = s_space.reshape((-1, 1))
+
+    sM, tM = np.meshgrid(s, time, indexing='xy')
+    A      = np.exp(-tM/sM)
+
+    contributions = []
+    residuals     = []
+    penaltyNorms  = []
+
+    g1temp     = g1_autocorrelation[:]
+
+    try:
+        maxID      = np.min(np.argwhere(np.isnan(g1temp)))
+    except:
+        maxID      = len(g1temp)
+
+    try:
+
+        if weights is  None:
+            weightsIdx = np.arange(maxID)*0 + 1 # Equal weights
+        else:
+            weightsIdx = weights[:maxID] # Custom weights
+
+        g1Filtered = g1temp[:maxID]
+        Afiltered  = A[:maxID]
+
+        cont, residual, penaltyNorm   = tikhonov_Phillips_reg(Afiltered,alphaList,g1Filtered,weightsIdx)
+
+    # If the fitting didn't work!
+    except:
+
+        cont        = [0]
+        residuals   = [0]
+        penaltyNorm = [0]
+
+    contributions.append(np.array(cont))
+    residuals.append(residual)
+    penaltyNorms.append(penaltyNorm)
+
+    return contributions, residuals, penaltyNorms
+
 def g2_finite_aproximation(decay_rates,times,beta,contributions):
               
     """
@@ -270,6 +345,63 @@ def find_Lcurve_corner(residualsNorm,contributionsNorm):
     x = (x - np.min(x)) / (np.max(x)-np.min(x)) * 100
     y = (y - np.min(y)) / (np.max(y)-np.min(y)) * 100
 
+    nPoints = len(x)
+
+    angles   =  []
+    poi2     =  []
+
+    C = (x[nPoints-1],y[nPoints-1]) # Last point of the curve
+    for i in range(nPoints-4):
+        B = (x[i],y[i])
+        d3 = spatial.distance.cdist([B],[C])[0]
+
+        for ii in range(i+2,nPoints-2):
+            A  = (x[ii],y[ii])   
+            d1 = spatial.distance.cdist([B],[A])[0]
+            d2 = spatial.distance.cdist([A],[C])[0]
+
+            area = (B[0] - A[0])*(A[1]-C[1]) - (A[0] - C[0])*(B[1]-A[1])
+            
+            angle = cosLawAngle(d1,d2,d3)
+            
+            if angle < 160 and area > 0:
+                
+                poi2.append(ii)
+                angles.append(angle)
+       
+    try:
+
+        selIdx2    = poi2[np.argmin(angles)]
+        return selIdx2 
+
+    except:
+
+        return None
+
+def find_Lcurve_corner_single(residualsNorm,contributionsNorm):
+ 
+    """
+    Use the triangle method to find the corner of the L-curve
+
+    If you use this function please cite the original manuscript from which I took the idea: 
+                    Castellanos, J. Longina, Susana Gómez, and Valia Guerra. 
+                    "The triangle method for finding the corner of the L-curve." 
+                    Applied Numerical Mathematics 43.4 (2002): 359-373.
+
+    Input - the norm vector of the residuals and the norm vector of the contributions
+            i.e., the norm of the fidelity term and the norm of the penalty term
+
+    Returns the position of the corner of the curve log(contributionsNorm) vs log(residualsNorm) 
+    """
+
+    # Convert to log
+    x = np.log(residualsNorm)
+    y = np.log(contributionsNorm)
+
+    # Normalise to avoid floating point errors - This doesn't change the shape of the curve
+    x = (x - np.min(x)) / (np.max(x)-np.min(x)) * 100
+    y = (y - np.min(y)) / (np.max(y)-np.min(y)) * 100
+    
     nPoints = len(x)
 
     angles   =  []
