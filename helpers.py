@@ -92,7 +92,7 @@ def get_beta_prior(g2,time):
 
     npFit     = np.polyfit( time[time < 5*1e-6],np.log(g2[time < 5*1e-6,:] - 1), 2 )
     betaPrior = np.exp(npFit[-1])
-        
+
     return betaPrior
 
 def get_beta_prior_single(g2,time):
@@ -104,7 +104,6 @@ def get_beta_prior_single(g2,time):
 
     Returns the intercept estimate 
     """
-
 
     npFit     = np.polyfit( time[time < 5*1e-6],np.log(g2[time < 5*1e-6] - 1), 2 )
     betaPrior = np.exp(npFit[-1])

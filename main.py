@@ -3,9 +3,10 @@ from collections import defaultdict
 import helpers
 import numpy as np
 from matplotlib import pyplot as plt
+from scipy.signal import argrelmax
 
 
-def load_data(folder: Path):
+def load_data(folder: Path, validation: bool):
     runs = (run for run in folder.iterdir() if run.suffix.lower() == ".asc")
     # dict containing data of runs. Auto-sorts repetitions under same key
     runs_data = defaultdict(lambda: defaultdict(list))
@@ -44,8 +45,12 @@ def load_data(folder: Path):
                 if not corr_line.strip():
                     break
                 values = corr_line.split()
-                data["times"].append(float(values[0]) / 1e6)
-                data["ys"].append(float(values[1]) + 1)
+                if not validation:
+                    data["times"].append(float(values[0]) / 1e3)
+                    data["ys"].append(float(values[1]) + 1)
+                else:
+                    data["times"].append(float(values[0]) / 1e6)
+                    data["ys"].append(float(values[1]))
             runs_data[dict_hash]["runs"].append(data)
     return runs_data
 
@@ -57,7 +62,7 @@ def calculate(data):
         wavelength = experiment["wavelength"]
         angle = experiment["angle"] / 180 * np.pi
         temperature = experiment["temperature"]
-        viscosity = experiment["viscosity"]
+        viscosity = experiment["viscosity"] * 1e-3 # conversion to pascal seconds from centipoise
         
         lowHr = 0.09
         highHr = 1e6
@@ -86,7 +91,6 @@ def calculate(data):
 
         ds = helpers.diffusion_from_inverse_decay_rate(s_space,q)
         hrs = helpers.hydrodynamic_radius(ds, temperature, viscosity)*1e9  # In nanometers
-
         for run in experiment["runs"]:
             times = np.array(run["times"])
             ys = np.array(run["ys"])
@@ -128,22 +132,23 @@ def calculate(data):
             run["hdr_dist"] = (hrs, contributionsGuess[0])
     
 
-def plot_radius_distribution(folder: Path):
-    data = load_data(folder)
+def plot_radius_distribution(folder: Path, validation = False):
+    data = load_data(folder, validation)
     calculate(data)
-    plt.xscale("log")
+    experiment_name = ""
     for experiment in data.values():
-        experiment_name = ""
         if isinstance(experiment, str):
             experiment_name = experiment
             continue
-        wavelength = experiment["wavelength"] / 1e9
-        angle = experiment["angle"] / 180 * np.pi
+        wavelength = experiment["wavelength"]
+        angle = experiment["angle"]
         temperature = experiment["temperature"]
-        experiment_name = experiment["experiment_name"]
-        for run in experiment["runs"]:
+        for run in experiment["runs"]: 
+            plt.xscale("log")
             plt.plot(run["hdr_dist"][0],run["hdr_dist"][1])
             plt.xlabel("Hydrodynamic radius (nm)")
             plt.ylabel("Relative contribution")
             plt.title(fr"{experiment_name}: HDR distribution at $\lambda = ${wavelength} nm, {angle} °, {temperature} K")
             plt.show()
+            x_max = argrelmax(run["hdr_dist"][1], order = 5)
+            print(f"Particle size at maximum is {np.round(run["hdr_dist"][0][x_max], 1)} nm")

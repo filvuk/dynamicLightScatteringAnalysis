@@ -139,6 +139,8 @@ class dls_experiment:
 
         self.betaGuess               = get_beta_prior(self.autocorrelation,self.time) 
 
+        print(self.betaGuess)
+        print(self.autocorrelation)
         return None
 
     def getG1correlation(self):
